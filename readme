@@ -1,0 +1,10 @@
+Command:
+
+1. statistics for a week: 
+$ bin/alm_report_mml -nosync -user tanya# -project mml -days 7 -mailto all
+
+2. statistics for two days:
+$ bin/alm_report_mml -nosync -user tanya# -project mml -days 2 -mailto all
+
+3. statistics after the project beginning:
+$ bin/alm_report_mml -nosync -user tanya# -project mml -days 0 -mailto all
