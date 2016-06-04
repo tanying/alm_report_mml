@@ -190,17 +190,6 @@ class dataCollection(UserInfo):
                 worksheet.write(i, j+3, Formula('SUM(' + list2[j] + str(beginIndex) + ':' + list2[j] + str(i) + ')'), self.getTitleStyle())
             j = j + 1
 
-    def writeSumTotalAll(self, worksheet, beginIndex, i):
-        list1 = ['0','0','0','0','0']
-        list2 = ['C','D','E','F','G']
-        j = 0
-        for item in list1:
-            if beginIndex > i:
-                worksheet.write(i, j+2, Formula(item), self.getTitleStyle())
-            else:
-                worksheet.write(i, j+2, Formula('SUM(' + list2[j] + str(beginIndex) + ':' + list2[j] + str(i) + ')*0.5'), self.getTitleStyle())
-            j = j + 1
-
     def createDB(self, sqliteConn):
         cur = sqliteConn.cursor()
         cur.execute('select name from sqlite_master where type="table"')
@@ -449,63 +438,11 @@ class dataCollection(UserInfo):
 
         return report_days
 
-    def getMMLTopHtml(self, wb, report_days, now):
-        html = '<!Doctype html>'
-        html += '<head>'
-        html += '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'
-        html += '</head>'
-        html += '<body>'
-
+    def getMMLTopHtml(self, wb):
+        html = ''
         worksheet = wb.sheet_by_index(0)
-        nrows = worksheet.nrows
-        ncols = worksheet.ncols
-
-        member_index_begin = 0
-        member_index_end = 0
-        team_index_begin = 0
-        team_index_end_list = []
-        for i in range(3,nrows):
-            tmp_list = worksheet.row_values(i)
-            if tmp_list[1] == 'Member':
-                member_index_begin = i + 1
-            elif tmp_list[1].find('_SUM') > -1 :
-                if tmp_list[1] == ('Member_SUM'):
-                    member_index_end = i-1
-                else:
-                    team_index_end_list.append([i,tmp_list[1][:-4]])
-            elif tmp_list[1] == 'Team':
-                team_index_begin = i + 1
-
-        #generate member list
-        member_list = {}
-        for i in range(member_index_begin,member_index_end):
-            key= worksheet.row_values(i)[1:][0]
-            member_list[key]=worksheet.row_values(i)[2:]
-
-        team_dict = {}
-        index_begin = team_index_begin
-        for team_tmp_list in team_index_end_list:
-            key = team_tmp_list[1]
-            index_end = team_tmp_list[0]
-            team_dict[key]={}
-            for i in range(index_begin,index_end):
-                pjname = worksheet.row_values(i)[1:][0]
-                team_dict[key][pjname]=worksheet.row_values(i)[2:]
-            index_begin = index_end + 2
-
-        print member_list
-        print team_dict
-
-        html += '<font color="#000000" face="Arial" size="3"><br><strong>Note:</strong>'
-        html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;"To V_SW" column means those Task/Defect in resolved state. Resolved Task/Defect can not be taken as it has been fixed by SW, owner should verify it and change its state to VEVRIFIED_SW.<br><br>'
-        html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>"Fixed_All"/"REG Total"</strong> column that caculates data for the days <strong>' + report_days + '</strong>.<br><br>'
-        html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;From attached file pr.xls, you can see all of OG & Fixed Task/Defect,  you can also filter team info by "Team" column.<br><br>'
-        html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;From attached file '
-        html += '<font color="#000000" face="Arial" size="3">bugs_monitor_' + now.strftime('%Y-%m-%d') + '.xls,'+ '&nbsp;you can see data statistics of one team or one person.<br><br>'
-        html += '<font color="#000000" face="Arial" size="3"><strong>Any mistake please let me know.&nbsp;Thanks.</strong><br><br>'
-        html += '<font color="#000000" face="Arial" size="3">BR,<br>'
-        html += '<font color="#000000" face="Arial" size="3">' + self.getFullName() + '<br><br>'
-        html += '</body>'
+        print wb
+        print worksheet
         return html
 
     def start(self, conf, days_value):
@@ -523,7 +460,6 @@ class dataCollection(UserInfo):
         sheetNames = wb.sheet_names()
         sheetCount = 0
         report_days = self.get_report_days(days_value)
-        top_worksheet = worksheet = workbook.add_sheet('MML Total')
 
         for sheetName in sheetNames:
             if sheetName != 'PR Status' and -1 == sheetName.find('('):
@@ -609,9 +545,8 @@ class dataCollection(UserInfo):
                 self.writeSum(worksheet, beginIndex, i)
 
         ProjectList = conf.dumpConf()['integrity_project'].split(',')#tanya_log
-        #write the total data of MML
-        #worksheet = workbook.add_sheet('MML&PROJECT')
-        worksheet = top_worksheet
+        #write the data by Project
+        worksheet = workbook.add_sheet('MML&PROJECT')
         worksheet.frmla_opts = RecalcAlways
 
         i = 3
@@ -627,75 +562,82 @@ class dataCollection(UserInfo):
                     teamMemberList.append(line.split(':'))
         print teamMemberList
 
-        worksheet.write(i, 1, 'Member', self.getTitleStyle())
+        worksheet.write(i, 1, teamName.decode('utf8'), self.getTitleStyle())
         self.writeTitle(worksheet, i, 2)
         i = i + 1
         beginIndex = i + 1
-        for teamMember in teamMemberList:
-            #get the data from DB
-            #worksheet.write(i, 2, 'Member', self.getCellStyle())
-            cur = sqliteConn.cursor()
-            haveData = True
-            cur.execute("SELECT SUM(ogAll),SUM(ogHomo),SUM(ToSW),SUM(fixed),SUM(reg) FROM engreport WHERE name = '" + teamMember[0] + "'")
-            while (True):
-                fetchList = cur.fetchone()
-                if type(fetchList) == types.NoneType:
-                    break
-                haveData = self.hasData(fetchList)
-                if(haveData == False):
-                    break
-                worksheet.write(i, 1, teamMember[0], self.getCellStyle())
-                worksheet.write(i, 2, fetchList[0], self.getCellStyle())
-                worksheet.write(i, 3, fetchList[1], self.getCellStyle())
-                worksheet.write(i, 4, fetchList[2], self.getCellStyle())
-                worksheet.write(i, 5, fetchList[3], self.getCellStyle())
-                worksheet.write(i, 6, fetchList[4], self.getCellStyle())
-            cur.close()
-            if(haveData == True):
-                i = i + 1
-        worksheet.write(i, 1, 'Member_SUM',self.getTitleStyle())
+        for sheetName in sheetNames:
+            if sheetName != 'PR Status':
+                #get the data from DB
+                cur = sqliteConn.cursor()
+                haveData = True
+                cur.execute("SELECT SUM(ogAll),SUM(ogHomo),SUM(ToSW),SUM(fixed),SUM(reg) FROM engreport WHERE platform = '" + sheetName + "'  AND  team = '" + teamName + "'")
+                while (True):
+                    fetchList = cur.fetchone()
+                    if type(fetchList) == types.NoneType:
+                        break
+                    haveData = self.hasData(fetchList)
+                    if(haveData == False):
+                        break
+                    worksheet.write(i, 1, sheetName, self.getCellStyle())
+                    worksheet.write(i, 2, fetchList[0], self.getCellStyle())
+                    worksheet.write(i, 3, fetchList[1], self.getCellStyle())
+                    worksheet.write(i, 4, fetchList[2], self.getCellStyle())
+                    worksheet.write(i, 5, fetchList[3], self.getCellStyle())
+                    worksheet.write(i, 6, fetchList[4], self.getCellStyle())
+                cur.close()
+                if(haveData == True):
+                    i = i + 1
+        worksheet.write(i, 1, teamName.decode('utf8') + '_SUM',self.getTitleStyle())
         self.writeSumAll(worksheet, beginIndex, i)
         i = i + 2
-        worksheet.write(i, 1, 'Team', self.getTitleStyle())
-        self.writeTitle(worksheet, i, 2)
-        i=i+1
-        teamBeginIndex = i + 1
-        for teamName in teamNameList:
-            beginIndex = i + 1
-            for sheetName in sheetNames:
-                if sheetName != 'PR Status':
-                    #get the data from DB
-                    cur = sqliteConn.cursor()
-                    haveData = True
-                    cur.execute("SELECT SUM(ogAll),SUM(ogHomo),SUM(ToSW),SUM(fixed),SUM(reg) FROM engreport WHERE platform = '" + sheetName + "'  AND  team = '" + teamName + "'")
-                    while (True):
-                        fetchList = cur.fetchone()
-                        if type(fetchList) == types.NoneType:
-                            break
-                        haveData = self.hasData(fetchList)
-                        if(haveData == False):
-                            break
-                        worksheet.write(i, 1, sheetName, self.getCellStyle())
-                        worksheet.write(i, 2, fetchList[0], self.getCellStyle())
-                        worksheet.write(i, 3, fetchList[1], self.getCellStyle())
-                        worksheet.write(i, 4, fetchList[2], self.getCellStyle())
-                        worksheet.write(i, 5, fetchList[3], self.getCellStyle())
-                        worksheet.write(i, 6, fetchList[4], self.getCellStyle())
-                    cur.close()
-                    if(haveData == True):
-                        i = i + 1
-            worksheet.write(i, 1, teamName.decode('utf8') + '_SUM',self.getTitleStyle())
-            self.writeSumAll(worksheet, beginIndex, i)
-            i = i + 1
-        #worksheet.write(i, 1, 'SUM_TOTAL',self.getTitleStyle())
-        #self.writeSumTotalAll(worksheet, teamBeginIndex, i)
+
 
 
         workbook = workbook.save('/local/reportpr/bugs_monitor_' + now.strftime('%Y-%m-%d') + '.xls')
         print 'Create the REPORT IN : /local/reportpr/bugs_monitor_' + now.strftime('%Y-%m-%d') + '.xls'
-        wb = xlrd.open_workbook('/local/reportpr/bugs_monitor_' + now.strftime('%Y-%m-%d') + '.xls')
 
-        html = self.getMMLTopHtml(wb,report_days, now)
+        # html = '<html xmlns="http://www.w3.org/1999/xhtml">'
+        # html += '<head>'
+        # html += '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'
+        # html += '</head>'
+        # html += '<body>'
+        # html += '<font color="#000000" face="Arial" size="3">Dears,<br><br>Please review the team Task/Defect report as follows: <br><br>'
+
+        # SHTeams = []
+        # NBTeams = []
+        # OtherTeams = []
+        # for projectName in ProjectList:
+        #     if('SH_' in projectName or 'NJ_' in projectName):
+        #         SHTeams.append(projectName)
+        #     elif ('NB_' in projectName):
+        #         NBTeams.append(projectName)
+        #     else:
+        #         OtherTeams.append(projectName)
+        # html += '<table width="100%" border="0" cellspacing="0" cellpadding="0">'
+        # html += '<tr><td >'
+
+        wb = xlrd.open_workbook('/local/reportpr/bugs_monitor_' + now.strftime('%Y-%m-%d') + '.xls')
+        # project_name = 'project_name'
+        # html += self.getHtml('SH', project_name, worksheet, SHTeams, ProjectList, 0)
+        # html += self.getHtml('NB', project_name, worksheet, NBTeams, ProjectList, 0)
+        # html += self.getHtml('Others', project_name, worksheet, OtherTeams, ProjectList, 0)
+        # html += '</td><td valign="top">'
+        # html += self.getTopOwnerHtml()
+        # html += self.getTopFunctionHtml()
+        # html += '</td></tr>'
+        # html += '</table>'
+
+        # html += '<font color="#000000" face="Arial" size="3"><br><strong>Note:</strong>'
+        # html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;"To V_SW" column means those Task/Defect in resolved state. Resolved Task/Defect can not be taken as it has been fixed by SW, owner should verify it and change its state to VEVRIFIED_SW.<br><br>'
+        # html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<strong>"Fixed_All"/"REG Total"</strong> column that caculates data for the days <strong>' + report_days + '</strong>.<br><br>'
+        # html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;From attached file pr.xls, you can see all of OG & Fixed Task/Defect,  you can also filter team info by "Team" column.<br><br>'
+        # html += '<font color="#000000" face="Arial" size="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;From attached file '
+        # html += '<font color="#000000" face="Arial" size="3">bugs_monitor_' + now.strftime('%Y-%m-%d') + '.xls,'+ '&nbsp;you can see data statistics of one team or one person.<br><br>'
+        # html += '<font color="#000000" face="Arial" size="3"><strong>Any mistake please let me know.&nbsp;Thanks.</strong><br><br>'
+        # html += '<font color="#000000" face="Arial" size="3">BR,<br>'
+        # html += '<font color="#000000" face="Arial" size="3">' + self.getFullName() + '<br><br>'
+        html = self.getMMLTopHtml(wb)
 
         msg = MIMEMultipart('mixed')
         msg['Date'] = strftime("%a, %d %b %Y %T", localtime()) + ' +0800'
